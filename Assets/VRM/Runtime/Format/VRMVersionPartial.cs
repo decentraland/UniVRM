@@ -105,6 +105,6 @@ namespace VRM
         }
 
         public const string VRM_VERSION = "UniVRM-" + VERSION;
-        public const string MENU = "VRM0";
+        public const string MENU = "Tools/VRM0";
     }
 }
