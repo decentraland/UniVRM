@@ -1,0 +1,110 @@
+name: Create UnityPackage
+
+on:
+  workflow_dispatch:
+  # push:
+  #   branches:
+  #     - workflow-wip-2
+
+env:
+  UNITY_PROJECT_PATH: .
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  create-unitypackage:
+    runs-on: [self-hosted, Windows, X64, Unity]
+    timeout-minutes: 60
+    steps:
+    - id: checkout
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+        lfs: true
+
+    - name: Detect Unity Version
+      id: detect-unity-version
+      run: |
+        PROJECT_VERSION_PATH="${{ env.UNITY_PROJECT_PATH }}/ProjectSettings/ProjectVersion.txt"
+        UNITY_HUB="C:\Program Files\Unity Hub\Unity Hub.exe"
+
+        UNITY_VERSION=`cat ${PROJECT_VERSION_PATH} | sed -n -E "s/^m_EditorVersion:\s+//p" | head -n 1`
+        UNITY_CHANGESET=`cat ${PROJECT_VERSION_PATH} | sed -n -E "s/^m_EditorVersionWithRevision:\s+\S+\s+\((\S+)\)/\1/p" | head -n 1`
+        UNITY_EDITOR_EXECUTABLE=`"${UNITY_HUB}" -- --headless editors --installed | \
+          sed -n -E "s/^${UNITY_VERSION} installed at //p" | \
+          head -n 1`
+
+        if [ -z "${UNITY_EDITOR_EXECUTABLE}" ]; then
+          echo "Unity ${UNITY_VERSION} is not installed."
+          exit 1
+
+          # コマンドラインからのインストールは Unity 3.7.0 時点では UAC 必須で難しい
+          UNITY_INSTALL_COMMAND="\"${UNITY_HUB}\" -- --headless install \
+            --version ${UNITY_VERSION} \
+            --changeset ${UNITY_CHANGESET} \
+            --module windows-il2cpp \
+            --childModules"
+        fi
+
+        echo "${UNITY_EDITOR_EXECUTABLE} is installed."
+        echo "unity-editor-executable=${UNITY_EDITOR_EXECUTABLE}" >> "${GITHUB_OUTPUT}"
+
+    - name: Run EditMode Tests
+      id: run-edit-mode-tests
+      run: |
+        echo "Run EditMode Tests..."
+        # RunEditModeTests の実行の結果、終了コードが 0 でない場合でもテストの結果を表示したいので set +e して一時的に回避する
+        set +e
+        "${{ steps.detect-unity-version.outputs.unity-editor-executable }}" \
+          -batchmode \
+          -silent-crashes \
+          -projectPath "${{ env.UNITY_PROJECT_PATH }}" \
+          -executeMethod "UniGLTF.TestRunner.RunEditModeTests" \
+          -logFile run-edit-mode-tests.log \
+          -testRunnerNUnitXmlFile run-edit-mode-tests.xml
+        RET=$?
+        set -e
+
+        echo "Output Log..."
+        cat run-edit-mode-tests.log | egrep "^\[\[TestRunnerLog\]\]"
+
+        # TODO: テスト結果を NUnit3 形式の run-edit-mode-tests.xml から読み込んで表示する
+
+        if [ ${RET:-1} -eq 0 ]; then
+          echo "Test succeeded."
+          exit 0
+        else
+          echo "Test failed."
+          exit 1
+        fi
+
+    - name: Upload test results
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: run-edit-mode-tests.xml
+        path: ${{ env.UNITY_PROJECT_PATH }}/run-edit-mode-tests.xml
+
+    - name: Create UnityPackage
+      id: create-unitypackage
+      run: |
+        "${{ steps.detect-unity-version.outputs.unity-editor-executable }}" \
+          -batchmode \
+          -silent-crashes \
+          -projectPath "${{ env.UNITY_PROJECT_PATH }}" \
+          -executeMethod "VRM.DevOnly.PackageExporter.VRMExportUnityPackage.CreateUnityPackageWithBuild" \
+          -logFile create-unitypackage.log
+        
+        echo "Success to create UnityPackage."
+
+    - name: Upload UnityPackage
+      uses: actions/upload-artifact@v4
+      with:
+        name: unitypackage
+        path: ${{ env.UNITY_PROJECT_PATH }}/*.unitypackage
+        
+
+
+

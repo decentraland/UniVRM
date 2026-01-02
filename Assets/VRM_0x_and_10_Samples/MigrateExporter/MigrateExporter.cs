@@ -1,4 +1,5 @@
 using System.IO;
+using UniGLTF;
 using UnityEngine;
 
 namespace UniVRM10.Sample
@@ -27,7 +28,7 @@ namespace UniVRM10.Sample
 #if UNITY_EDITOR
                 var path = UnityEditor.EditorUtility.OpenFilePanel("load vrm-0.x", null, "vrm");
 #else
-                Debug.LogWarning("no OpenFilePanel for runtime");
+                UniGLTFLogger.Warning("no OpenFilePanel for runtime");
                 string path = null;
 #endif
                 if (string.IsNullOrEmpty(path))
@@ -35,7 +36,7 @@ namespace UniVRM10.Sample
                     return;
                 }
 
-                Debug.Log(path);
+                UniGLTFLogger.Log(path);
                 var bytes = File.ReadAllBytes(path);
 
                 // load
@@ -47,7 +48,7 @@ namespace UniVRM10.Sample
                 };
                 // export vrm0
                 var vrm0 = VRM.VRMExporter.Export(exportConfig,
-                    vrm0Instance.gameObject, new VRMShaders.RuntimeTextureSerializer());
+                    vrm0Instance.gameObject, new RuntimeTextureSerializer());
                 var vrm0bytes = vrm0.ToGlbBytes();
 
                 // migrate to vrm1
@@ -55,10 +56,10 @@ namespace UniVRM10.Sample
                 {
                     gltf.asset.generator = "MigrateExporter sample";
                 });
-                var pathObj = VRMShaders.PathObject.FromFullPath(path);
+                var pathObj = PathObject.FromFullPath(path);
                 var newPath = pathObj.Parent.Child(pathObj.Stem + ".10.vrm");
                 newPath.WriteAllBytes(vrm1Bytes);
-                Debug.Log($"export to: {newPath}");
+                UniGLTFLogger.Log($"export to: {newPath}");
             }
         }
     }
